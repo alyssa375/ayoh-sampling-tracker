@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ayoh-orange: #F26722;
+  --ayoh-dark: #1A1A1A;
+  --ayoh-light: #FFF8F3;
+}
+
+body {
+  background-color: #f9fafb;
+}
