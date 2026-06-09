@@ -32,29 +32,9 @@ export async function middleware(request) {
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Logged in, trying to access /admin — check role
-  if (user && request.nextUrl.pathname.startsWith('/admin')) {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (profile?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/rep', request.url))
-    }
-  }
-
-  // Logged in and on login page — redirect to appropriate dashboard
+  // Logged in on login page — redirect to rep (layout will handle admin redirect)
   if (user && request.nextUrl.pathname === '/login') {
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    const dest = profile?.role === 'admin' ? '/admin' : '/rep'
-    return NextResponse.redirect(new URL(dest, request.url))
+    return NextResponse.redirect(new URL('/rep', request.url))
   }
 
   return supabaseResponse
