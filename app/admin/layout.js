@@ -8,17 +8,9 @@ export default async function AdminLayout({ children }) {
 
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, role')
-    .eq('id', user.id)
-    .single()
-
-  if (profile?.role !== 'admin') redirect('/rep')
-
   return (
     <div className="min-h-screen bg-gray-50">
-      <NavBar role="admin" userName={profile?.full_name} />
+      <NavBar role="admin" userName={user.email} />
       <main className="max-w-5xl mx-auto px-4 py-6">
         {children}
       </main>
