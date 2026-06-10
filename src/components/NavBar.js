@@ -16,15 +16,20 @@ export default function NavBar({ role, userName }) {
     { href: '/rep/clock', label: 'Clock In/Out', icon: '🕐' },
     { href: '/rep/report', label: 'Event Report', icon: '📋' },
     { href: '/rep/expenses', label: 'Expenses', icon: '💰' },
+    { href: '/rep/profile', label: 'My Profile', icon: '👤' },
   ]
 
   const adminLinks = [
     { href: '/admin', label: 'Dashboard', icon: '📊' },
+    { href: '/admin/analytics', label: 'Analytics', icon: '📈' },
     { href: '/admin/timesheets', label: 'Timesheets', icon: '🕐' },
     { href: '/admin/reports', label: 'Event Reports', icon: '📋' },
     { href: '/admin/expenses', label: 'Expenses', icon: '💰' },
-    { href: '/admin/payroll', label: 'Payroll Export', icon: '💵' },
+    { href: '/admin/payroll', label: 'Payroll', icon: '💵' },
+    { href: '/admin/products', label: 'Products', icon: '🌶️' },
+    { href: '/admin/templates', label: 'Templates', icon: '🗂️' },
     { href: '/admin/reps', label: 'Team', icon: '👥' },
+    { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
   ]
 
   const links = isAdmin ? adminLinks : repLinks
@@ -38,7 +43,6 @@ export default function NavBar({ role, userName }) {
     <nav className="bg-white border-b border-gray-100 sticky top-0 z-50">
       <div className="max-w-5xl mx-auto px-4">
         <div className="flex items-center justify-between h-14">
-          {/* Logo */}
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-full bg-ayoh-orange flex items-center justify-center">
               <span className="text-white text-sm font-bold">A</span>
@@ -46,7 +50,6 @@ export default function NavBar({ role, userName }) {
             <span className="font-bold text-ayoh-dark hidden sm:block">Ayoh Sampling</span>
           </div>
 
-          {/* Nav Links */}
           <div className="flex items-center gap-1 overflow-x-auto">
             {links.map(link => (
               <Link
@@ -64,7 +67,6 @@ export default function NavBar({ role, userName }) {
             ))}
           </div>
 
-          {/* User + Sign Out */}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 hidden md:block">{userName}</span>
             <button
