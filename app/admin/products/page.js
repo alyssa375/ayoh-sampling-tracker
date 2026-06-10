@@ -15,10 +15,7 @@ export default function ProductsPage() {
 
   async function fetchProducts() {
     setLoading(true)
-    const { data } = await supabase
-      .from('products')
-      .select('*')
-      .order('sort_order', { ascending: true })
+    const { data } = await supabase.from('products').select('*').order('sort_order', { ascending: true })
     setProducts(data || [])
     setLoading(false)
   }
@@ -44,7 +41,6 @@ export default function ProductsPage() {
     if (!form.name.trim()) return setError('Product name is required')
     const price = parseFloat(form.price_per_unit)
     if (isNaN(price) || price < 0) return setError('Enter a valid price')
-
     setSaving(true)
     setError('')
     const payload = {
@@ -53,7 +49,6 @@ export default function ProductsPage() {
       price_per_unit: price,
       active: form.active,
     }
-
     let err
     if (editId) {
       const res = await supabase.from('products').update(payload).eq('id', editId)
@@ -63,7 +58,6 @@ export default function ProductsPage() {
       const res = await supabase.from('products').insert({ ...payload, sort_order: maxOrder })
       err = res.error
     }
-
     setSaving(false)
     if (err) return setError(err.message)
     setShowForm(false)
@@ -97,13 +91,10 @@ export default function ProductsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Products & Flavors</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Products and Flavors</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage Ayoh products and set per-unit prices for sales tracking</p>
         </div>
-        <button
-          onClick={openNew}
-          className="bg-[#F26722] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors"
-        >
+        <button onClick={openNew} className="bg-[#F26722] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 transition-colors">
           + Add Product
         </button>
       </div>
@@ -159,18 +150,10 @@ export default function ProductsPage() {
             </div>
             {error && <p className="text-sm text-red-500">{error}</p>}
             <div className="flex gap-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-[#F26722] text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : editId ? 'Save Changes' : 'Add Product'}
+              <button type="submit" disabled={saving} className="bg-[#F26722] text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50">
+                {saving ? 'Saving...' : editId ? 'Save Changes' : 'Add Product'}
               </button>
-              <button
-                type="button"
-                onClick={() => setShowForm(false)}
-                className="px-5 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
-              >
+              <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100">
                 Cancel
               </button>
             </div>
@@ -179,7 +162,7 @@ export default function ProductsPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-16 text-gray-400">Loading…</div>
+        <div className="text-center py-16 text-gray-400">Loading...</div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           {products.length === 0 ? (
@@ -201,8 +184,45 @@ export default function ProductsPage() {
                   <tr key={p.id} className={`hover:bg-gray-50 ${!p.active ? 'opacity-50' : ''}`}>
                     <td className="px-5 py-3">
                       <div className="flex gap-1">
-                        <button onClick={() => moveUp(p)} disabled={i === 0} className="text-gray-400 hover:text-gray-700 disabled:opacity-20 text-xs">▲</button>
-                        <button onClick={() => moveDown(p)} disabled={i === products.length - 1} className="text-gray-400 hover:text-gray-700 disabled:opacity-20 text-xs">▼</button>
+                        <button
+                          onClick={() => moveUp(p)}
+                          disabled={i === 0}
+                          className="text-gray-400 hover:text-gray-700 disabled:opacity-20 text-xs px-1"
+                        >
+                          Up
+                        </button>
+                        <button
+                          onClick={() => moveDown(p)}
+                          disabled={i === products.length - 1}
+                          className="text-gray-400 hover:text-gray-700 disabled:opacity-20 text-xs px-1"
+                        >
+                          Dn
+                        </button>
                       </div>
                     </td>
-                    <td className="px-5 py-3 font-
+                    <td className="px-5 py-3 font-medium text-gray-800">{p.name}</td>
+                    <td className="px-5 py-3 text-gray-500 font-mono text-xs">{p.sku || '-'}</td>
+                    <td className="px-5 py-3 text-right font-medium text-gray-700">${p.price_per_unit}</td>
+                    <td className="px-5 py-3">
+                      <button
+                        onClick={() => toggleActive(p)}
+                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
+                      >
+                        {p.active ? 'Active' : 'Hidden'}
+                      </button>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <button onClick={() => openEdit(p)} className="text-sm text-[#F26722] hover:text-orange-700 font-medium">
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
