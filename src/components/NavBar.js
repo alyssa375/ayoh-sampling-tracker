@@ -26,8 +26,8 @@ export default function NavBar({ role, userName }) {
     { href: '/admin/reports', label: 'Event Reports', icon: '📋' },
     { href: '/admin/expenses', label: 'Expenses', icon: '💰' },
     { href: '/admin/payroll', label: 'Payroll', icon: '💵' },
-    { href: '/admin/products', label: 'Products', icon: '🌶️' },
-    { href: '/admin/templates', label: 'Templates', icon: '🗂️' },
+    { href: '/admin/products', label: 'Products', icon: '🌶' },
+    { href: '/admin/templates', label: 'Templates', icon: '📝' },
     { href: '/admin/reps', label: 'Team', icon: '👥' },
     { href: '/admin/settings', label: 'Settings', icon: '⚙️' },
   ]
