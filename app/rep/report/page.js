@@ -1,288 +1,408 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-const AYOH_PRODUCTS = [
-  'Ayoh! Harissa Hot Sauce',
-  'Ayoh! Honey Garlic Hot Sauce',
-  'Ayoh! Green Jalapeño Hot Sauce',
-  'Ayoh! Smoky Chipotle Hot Sauce',
-  'Other',
-]
-
-export default function EventReportPage() {
-  const router = useRouter()
+export default function RepReportPage() {
   const supabase = createClient()
+  const router = useRouter()
 
-  const [form, setForm] = useState({
-    event_date: new Date().toISOString().split('T')[0],
-    store_name: '',
-    store_address: '',
-    city: '',
-    state: '',
-    products_sampled: [],
-    units_sampled: '',
-    consumer_interactions: '',
-    units_sold: '',
-    notes: '',
-  })
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState(false)
 
+  const [templates, setTemplates] = useState([])
+  const [products, setProducts] = useState([])
+  const [mileageRate, setMileageRate] = useState(0.67)
+  const [profile, setProfile] = useState(null)
+
+  const [selectedTemplate, setSelectedTemplate] = useState('')
+  const [templateFields, setTemplateFields] = useState([])
+  const [customResponses, setCustomResponses] = useState({})
+  const [storeName, setStoreName] = useState('')
+  const [storeAddress, setStoreAddress] = useState('')
+  const [eventDate, setEventDate] = useState(new Date().toISOString().split('T')[0])
+  const [interactions, setInteractions] = useState('')
+  const [notes, setNotes] = useState('')
+  const [unitsSold, setUnitsSold] = useState({})
   const [photos, setPhotos] = useState([])
-  const [uploading, setUploading] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState(null)
+  const [photoFiles, setPhotoFiles] = useState([])
 
-  function handleChange(e) {
-    const { name, value } = e.target
-    setForm(prev => ({ ...prev, [name]: value }))
-  }
+  const [mileageLoading, setMileageLoading] = useState(false)
+  const [mileageData, setMileageData] = useState(null)
+  const [mileageError, setMileageError] = useState('')
 
-  function toggleProduct(product) {
-    setForm(prev => ({
-      ...prev,
-      products_sampled: prev.products_sampled.includes(product)
-        ? prev.products_sampled.filter(p => p !== product)
-        : [...prev.products_sampled, product],
-    }))
-  }
+  useEffect(() => {
+    async function load() {
+      setLoading(true)
+      const { data: { user } } = await supabase.auth.getUser()
 
-  async function uploadPhotos(files, userId) {
-    const urls = []
-    for (const file of files) {
-      const ext = file.name.split('.').pop()
-      const path = `${userId}/events/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-      const { error } = await supabase.storage.from('receipts').upload(path, file)
-      if (!error) urls.push(path)
+      const [profileRes, templatesRes, productsRes, settingsRes] = await Promise.all([
+        supabase.from('profiles').select('full_name, home_address, home_lat, home_lng').eq('id', user.id).single(),
+        supabase.from('report_templates').select('*').eq('active', true).order('created_at'),
+        supabase.from('products').select('*').eq('active', true).order('sort_order'),
+        supabase.from('app_settings').select('key, value'),
+      ])
+
+      setProfile(profileRes.data)
+      setTemplates(templatesRes.data || [])
+      setProducts(productsRes.data || [])
+
+      const settings = {}
+      for (const s of (settingsRes.data || [])) settings[s.key] = s.value
+      if (settings.mileage_rate) setMileageRate(parseFloat(settings.mileage_rate))
+
+      if (templatesRes.data?.length) {
+        const first = templatesRes.data[0]
+        setSelectedTemplate(first.id)
+        await loadTemplateFields(first.id)
+      }
+
+      setLoading(false)
     }
-    return urls
+    load()
+  }, [])
+
+  async function loadTemplateFields(templateId) {
+    if (!templateId) { setTemplateFields([]); return }
+    const { data } = await supabase
+      .from('template_fields')
+      .select('*')
+      .eq('template_id', templateId)
+      .order('sort_order')
+    setTemplateFields(data || [])
+    setCustomResponses({})
+  }
+
+  async function handleTemplateChange(id) {
+    setSelectedTemplate(id)
+    await loadTemplateFields(id)
+  }
+
+  async function calculateMileage() {
+    if (!profile?.home_address) {
+      setMileageError('Please add your home address in My Profile first.')
+      return
+    }
+    if (!storeAddress.trim()) {
+      setMileageError('Enter the store address first.')
+      return
+    }
+    setMileageLoading(true)
+    setMileageError('')
+    setMileageData(null)
+
+    try {
+      const res = await fetch('/api/mileage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ origin: profile.home_address, destination: storeAddress }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMileageError(data.error || 'Failed to calculate mileage')
+      } else {
+        setMileageData(data)
+      }
+    } catch {
+      setMileageError('Network error calculating mileage')
+    }
+    setMileageLoading(false)
+  }
+
+  function handlePhotoChange(e) {
+    const files = Array.from(e.target.files)
+    setPhotoFiles(files)
+    setPhotos(files.map(f => URL.createObjectURL(f)))
+  }
+
+  function setUnits(productId, val) {
+    setUnitsSold(prev => ({ ...prev, [productId]: val }))
+  }
+
+  function setCustomResponse(fieldId, val) {
+    setCustomResponses(prev => ({ ...prev, [fieldId]: val }))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.store_name.trim()) {
-      setMessage({ type: 'error', text: 'Store name is required.' })
-      return
+    if (!storeName.trim()) return setError('Store name is required')
+    if (!eventDate) return setError('Event date is required')
+
+    for (const f of templateFields) {
+      if (f.required && !customResponses[f.id]?.toString().trim()) {
+        return setError(`"${f.label}" is required`)
+      }
     }
 
-    setLoading(true)
-    setMessage(null)
+    setSubmitting(true)
+    setError('')
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    let photoUrls = []
-    if (photos.length > 0) {
-      setUploading(true)
-      photoUrls = await uploadPhotos(photos, user.id)
-      setUploading(false)
+    const totalUnits = Object.values(unitsSold).reduce((s, v) => s + (parseInt(v) || 0), 0)
+    let dollarsSold = 0
+    for (const [productId, qty] of Object.entries(unitsSold)) {
+      const product = products.find(p => p.id === productId)
+      if (product && qty) dollarsSold += product.price_per_unit * (parseInt(qty) || 0)
     }
 
-    const { error } = await supabase.from('event_reports').insert({
-      user_id: user.id,
-      event_date: form.event_date,
-      store_name: form.store_name,
-      store_address: form.store_address || null,
-      city: form.city || null,
-      state: form.state || null,
-      products_sampled: form.products_sampled,
-      units_sampled: parseInt(form.units_sampled) || 0,
-      consumer_interactions: parseInt(form.consumer_interactions) || 0,
-      units_sold: parseInt(form.units_sold) || 0,
-      notes: form.notes || null,
-      photo_urls: photoUrls,
+    const productsSoldList = products
+      .filter(p => unitsSold[p.id] && parseInt(unitsSold[p.id]) > 0)
+      .map(p => `${p.name}: ${unitsSold[p.id]}`)
+
+    const miles = mileageData?.miles || 0
+    const mileagePay = Math.round(miles * mileageRate * 100) / 100
+
+    const photoUrls = []
+    for (const file of photoFiles) {
+      const ext = file.name.split('.').pop()
+      const path = `${user.id}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${ext}`
+      const { error: upErr } = await supabase.storage.from('receipts').upload(path, file)
+      if (!upErr) {
+        const { data: { publicUrl } } = supabase.storage.from('receipts').getPublicUrl(path)
+        photoUrls.push(publicUrl)
+      }
+    }
+
+    const { error: err } = await supabase.from('event_reports').insert({
+      rep_id: user.id,
+      store_name: storeName.trim(),
+      store_address: storeAddress.trim() || null,
+      event_date: eventDate,
+      interactions_count: parseInt(interactions) || 0,
+      notes: notes.trim() || null,
+      units_sold: totalUnits,
+      dollars_sold: dollarsSold,
+      products_sold: productsSoldList.join(', ') || null,
+      photo_urls: photoUrls.length ? photoUrls : null,
+      template_id: selectedTemplate || null,
+      custom_responses: customResponses,
+      mileage: miles,
+      mileage_pay: mileagePay,
+      origin_address: profile?.home_address || null,
     })
 
-    if (error) {
-      setMessage({ type: 'error', text: error.message })
-    } else {
-      setMessage({ type: 'success', text: 'Event report submitted!' })
-      setTimeout(() => router.push('/rep'), 1500)
-    }
-
-    setLoading(false)
+    setSubmitting(false)
+    if (err) return setError(err.message)
+    setSuccess(true)
+    setTimeout(() => router.push('/rep'), 2000)
   }
 
+  if (loading) return <div className="text-center py-16 text-gray-400">Loading…</div>
+
+  if (success) {
+    return (
+      <div className="text-center py-16">
+        <div className="text-5xl mb-4">✅</div>
+        <p className="text-xl font-semibold text-gray-800">Report submitted!</p>
+        <p className="text-gray-500 mt-1">Redirecting to dashboard…</p>
+      </div>
+    )
+  }
+
+  const totalUnitCount = Object.values(unitsSold).reduce((s, v) => s + (parseInt(v) || 0), 0)
+  const totalRevenue = products.reduce((s, p) => {
+    return s + (p.price_per_unit * (parseInt(unitsSold[p.id]) || 0))
+  }, 0)
+
   return (
-    <div className="max-w-lg mx-auto">
-      <h1 className="text-2xl font-bold text-ayoh-dark mb-6">Submit Event Report</h1>
+    <div className="max-w-2xl space-y-5">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Event Report</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Submit your sampling event details</p>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        {/* Date */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
-          <h2 className="font-semibold text-gray-700">Event Details</h2>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-            <input
-              type="date"
-              name="event_date"
-              value={form.event_date}
-              onChange={handleChange}
-              required
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange"
-            />
+        {templates.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Report Type</label>
+            <select
+              value={selectedTemplate}
+              onChange={e => handleTemplateChange(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+            >
+              {templates.map(t => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
           </div>
+        )}
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Store Name <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="text"
-              name="store_name"
-              value={form.store_name}
-              onChange={handleChange}
-              placeholder="e.g. Whole Foods Market"
-              required
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
-            <input
-              type="text"
-              name="store_address"
-              value={form.store_address}
-              onChange={handleChange}
-              placeholder="123 Main St"
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
+          <h2 className="font-semibold text-gray-800">Event Info</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Store Name *</label>
               <input
                 type="text"
-                name="city"
-                value={form.city}
-                onChange={handleChange}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange"
+                value={storeName}
+                onChange={e => setStoreName(e.target.value)}
+                placeholder="Whole Foods Market"
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Event Date *</label>
               <input
-                type="text"
-                name="state"
-                value={form.state}
-                onChange={handleChange}
-                placeholder="IL"
-                maxLength={2}
-                className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange"
+                type="date"
+                value={eventDate}
+                onChange={e => setEventDate(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Store Address</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={storeAddress}
+                onChange={e => { setStoreAddress(e.target.value); setMileageData(null); setMileageError('') }}
+                placeholder="123 Main St, Portland, OR"
+                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+              />
+              <button
+                type="button"
+                onClick={calculateMileage}
+                disabled={mileageLoading || !storeAddress.trim()}
+                className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 disabled:opacity-50 whitespace-nowrap"
+              >
+                {mileageLoading ? 'Calculating…' : '📍 Calc Miles'}
+              </button>
+            </div>
+            {mileageError && <p className="text-xs text-red-500 mt-1">{mileageError}</p>}
+            {mileageData && (
+              <div className="mt-2 bg-orange-50 border border-orange-100 rounded-lg px-3 py-2 text-sm">
+                <span className="font-medium text-[#F26722]">{mileageData.distanceText} from home</span>
+                <span className="text-gray-500 ml-2">→ ${(mileageData.miles * mileageRate).toFixed(2)} reimbursement</span>
+              </div>
+            )}
+            {!profile?.home_address && (
+              <p className="text-xs text-amber-600 mt-1">
+                ⚠ Add your home address in <a href="/rep/profile" className="underline">My Profile</a> to enable mileage calculation.
+              </p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Customer Interactions</label>
+            <input
+              type="number"
+              min="0"
+              value={interactions}
+              onChange={e => setInteractions(e.target.value)}
+              placeholder="0"
+              className="w-28 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+            />
           </div>
         </div>
 
-        {/* Products */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-3">
-          <h2 className="font-semibold text-gray-700">Products Sampled</h2>
-          <div className="flex flex-wrap gap-2">
-            {AYOH_PRODUCTS.map(product => (
-              <button
-                key={product}
-                type="button"
-                onClick={() => toggleProduct(product)}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                  form.products_sampled.includes(product)
-                    ? 'bg-ayoh-orange text-white border-ayoh-orange'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-ayoh-orange'
-                }`}
-              >
-                {product}
-              </button>
+        {products.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-3">
+            <h2 className="font-semibold text-gray-800">Units Sold</h2>
+            <div className="space-y-3">
+              {products.map(p => (
+                <div key={p.id} className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800">{p.name}</p>
+                    <p className="text-xs text-gray-400">${p.price_per_unit} / unit</p>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    value={unitsSold[p.id] || ''}
+                    onChange={e => setUnits(p.id, e.target.value)}
+                    placeholder="0"
+                    className="w-20 border border-gray-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-300"
+                  />
+                </div>
+              ))}
+            </div>
+            {totalUnitCount > 0 && (
+              <div className="border-t border-gray-100 pt-3 flex justify-between text-sm font-medium">
+                <span className="text-gray-700">Total: {totalUnitCount} units</span>
+                <span className="text-[#F26722]">${totalRevenue.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {templateFields.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm space-y-4">
+            <h2 className="font-semibold text-gray-800">Additional Questions</h2>
+            {templateFields.map(f => (
+              <div key={f.id}>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {f.label}
+                  {f.required && <span className="text-red-400 ml-1">*</span>}
+                </label>
+                {f.field_type === 'text' && (
+                  <input type="text" value={customResponses[f.id] || ''} onChange={e => setCustomResponse(f.id, e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                )}
+                {f.field_type === 'textarea' && (
+                  <textarea value={customResponses[f.id] || ''} onChange={e => setCustomResponse(f.id, e.target.value)} rows={3} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                )}
+                {f.field_type === 'number' && (
+                  <input type="number" value={customResponses[f.id] || ''} onChange={e => setCustomResponse(f.id, e.target.value)} className="w-36 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300" />
+                )}
+                {f.field_type === 'checkbox' && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={!!customResponses[f.id]} onChange={e => setCustomResponse(f.id, e.target.checked)} className="w-4 h-4 accent-[#F26722]" />
+                    <span className="text-sm text-gray-700">Yes</span>
+                  </label>
+                )}
+                {f.field_type === 'select' && (
+                  <select value={customResponses[f.id] || ''} onChange={e => setCustomResponse(f.id, e.target.value)} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300">
+                    <option value="">Select…</option>
+                    {(f.options || []).map(o => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                )}
+              </div>
             ))}
           </div>
+        )}
+
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Any additional notes about the event…"
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+          />
         </div>
 
-        {/* Numbers */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
-          <h2 className="font-semibold text-gray-700">Results</h2>
-
-          <div className="grid grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Units Sampled</label>
-              <input
-                type="number"
-                name="units_sampled"
-                value={form.units_sampled}
-                onChange={handleChange}
-                min="0"
-                placeholder="0"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange text-center"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Interactions</label>
-              <input
-                type="number"
-                name="consumer_interactions"
-                value={form.consumer_interactions}
-                onChange={handleChange}
-                min="0"
-                placeholder="0"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange text-center"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Units Sold</label>
-              <input
-                type="number"
-                name="units_sold"
-                value={form.units_sold}
-                onChange={handleChange}
-                min="0"
-                placeholder="0"
-                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange text-center"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea
-              name="notes"
-              value={form.notes}
-              onChange={handleChange}
-              rows={3}
-              placeholder="How did it go? Any feedback from customers, store staff, issues..."
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-ayoh-orange resize-none"
-            />
-          </div>
-        </div>
-
-        {/* Photos */}
-        <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-3">
-          <h2 className="font-semibold text-gray-700">Event Photos (optional)</h2>
+        <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Event Photos (optional)</label>
           <input
             type="file"
             accept="image/*"
             multiple
-            onChange={e => setPhotos(Array.from(e.target.files))}
-            className="w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-orange-50 file:text-ayoh-orange file:font-medium hover:file:bg-orange-100"
+            onChange={handlePhotoChange}
+            className="block text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-orange-50 file:text-[#F26722] hover:file:bg-orange-100"
           />
           {photos.length > 0 && (
-            <p className="text-sm text-gray-500">{photos.length} photo{photos.length > 1 ? 's' : ''} selected</p>
+            <div className="flex gap-2 mt-3 flex-wrap">
+              {photos.map((url, i) => (
+                <img key={i} src={url} alt="" className="w-16 h-16 object-cover rounded-lg border border-gray-200" />
+              ))}
+            </div>
           )}
         </div>
 
-        {message && (
-          <div className={`text-sm rounded-lg px-4 py-3 ${
-            message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'
-          }`}>
-            {message.text}
-          </div>
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">{error}</div>
         )}
 
         <button
           type="submit"
-          disabled={loading || uploading}
-          className="w-full bg-ayoh-orange text-white py-3 rounded-xl font-semibold hover:bg-orange-600 transition-colors disabled:opacity-50"
+          disabled={submitting}
+          className="w-full bg-[#F26722] text-white py-3 rounded-xl text-sm font-semibold hover:bg-orange-600 disabled:opacity-50 transition-colors"
         >
-          {uploading ? 'Uploading photos...' : loading ? 'Submitting...' : 'Submit Report'}
+          {submitting ? 'Submitting…' : 'Submit Event Report'}
         </button>
       </form>
     </div>
