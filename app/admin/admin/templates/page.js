@@ -197,4 +197,188 @@ export default function TemplatesPage() {
 
           <div className="space-y-3">
             <h2 className="font-semibold text-gray-800">Custom Questions</h2>
-            <p className="text-sm text-gray-500">These appear on the event report form
+            <p className="text-sm text-gray-500">These appear on the event report form in addition to the standard fields.</p>
+
+            {fields.map((f, idx) => (
+              <div key={idx} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Question {idx + 1}</label>
+                    <input
+                      type="text"
+                      value={f.label}
+                      onChange={e => updateField(idx, 'label', e.target.value)}
+                      placeholder="e.g. How was the store staff?"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeField(idx)}
+                    className="mt-5 text-gray-400 hover:text-red-500 text-xl leading-none"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">Type</label>
+                    <select
+                      value={f.field_type}
+                      onChange={e => updateField(idx, 'field_type', e.target.value)}
+                      className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    >
+                      {FIELD_TYPES.map(t => (
+                        <option key={t.value} value={t.value}>{t.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <label className="flex items-center gap-2 mt-4 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={f.required}
+                      onChange={e => updateField(idx, 'required', e.target.checked)}
+                      className="w-4 h-4 accent-[#F26722]"
+                    />
+                    <span className="text-sm text-gray-700">Required</span>
+                  </label>
+                </div>
+
+                {f.field_type === 'select' && (
+                  <div className="space-y-2">
+                    <label className="block text-xs font-medium text-gray-500">Answer Options</label>
+                    {(f.options || []).map((opt, oi) => (
+                      <div key={oi} className="flex gap-2 items-center">
+                        <input
+                          type="text"
+                          value={opt}
+                          onChange={e => updateOption(idx, oi, e.target.value)}
+                          placeholder={`Option ${oi + 1}`}
+                          className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeOption(idx, oi)}
+                          className="text-gray-400 hover:text-red-500"
+                        >×</button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => addOption(idx)}
+                      className="text-sm text-[#F26722] hover:text-orange-700 font-medium"
+                    >
+                      + Add Option
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <button
+              type="button"
+              onClick={addField}
+              className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-sm text-gray-500 hover:border-orange-300 hover:text-orange-500 transition-colors font-medium"
+            >
+              + Add Question
+            </button>
+          </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
+
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-[#F26722] text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
+            >
+              {saving ? 'Saving…' : 'Save Template'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="px-6 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-100"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Report Templates</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Build custom question sets for different event types</p>
+        </div>
+        <button
+          onClick={openNew}
+          className="bg-[#F26722] text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-orange-600"
+        >
+          + New Template
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="text-center py-16 text-gray-400">Loading…</div>
+      ) : (
+        <div className="space-y-3">
+          {templates.length === 0 && (
+            <div className="text-center py-12 text-gray-400 bg-white rounded-xl border border-gray-100">
+              No templates yet. Create your first one!
+            </div>
+          )}
+          {templates.map(t => (
+            <div key={t.id} className={`bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden ${!t.active ? 'opacity-60' : ''}`}>
+              <div className="flex items-center justify-between px-5 py-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold text-gray-800">{t.name}</p>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${t.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                      {t.active ? 'Active' : 'Hidden'}
+                    </span>
+                  </div>
+                  {t.description && <p className="text-sm text-gray-500 mt-0.5">{t.description}</p>}
+                </div>
+                <div className="flex items-center gap-2 ml-4">
+                  <button onClick={() => loadFields(t.id)} className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1">
+                    {expandedId === t.id ? '▲ Hide' : '▼ View'} questions
+                  </button>
+                  <button onClick={() => openEdit(t)} className="text-sm text-[#F26722] hover:text-orange-700 font-medium px-2 py-1">Edit</button>
+                  <button onClick={() => toggleActive(t)} className="text-sm text-gray-500 hover:text-gray-700 px-2 py-1">
+                    {t.active ? 'Hide' : 'Show'}
+                  </button>
+                </div>
+              </div>
+
+              {expandedId === t.id && templateFields[t.id] && (
+                <div className="border-t border-gray-100 px-5 py-3 bg-gray-50">
+                  {templateFields[t.id].length === 0 ? (
+                    <p className="text-sm text-gray-400">No custom questions</p>
+                  ) : (
+                    <ol className="space-y-1">
+                      {templateFields[t.id].map((f, i) => (
+                        <li key={f.id} className="text-sm text-gray-700 flex items-start gap-2">
+                          <span className="text-gray-400 font-medium w-5 shrink-0">{i + 1}.</span>
+                          <span>
+                            {f.label}
+                            <span className="ml-2 text-xs text-gray-400">({FIELD_TYPES.find(x => x.value === f.field_type)?.label})</span>
+                            {f.required && <span className="ml-1 text-xs text-red-400">required</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
